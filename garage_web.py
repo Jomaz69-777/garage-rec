@@ -48,3 +48,4 @@ if car_number:
                 save_data(data)
                 st.success(f"Added new service for {car_number}!")
                 st.experimental_rerun()  # Refresh to show new record
+
