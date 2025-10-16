@@ -1,0 +1,120 @@
+import streamlit as st
+import json
+import os
+import pandas as pd
+from datetime import datetime
+
+DATA_FILE = "garage_records.json"
+
+# --- Helper Functions ---
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+def save_file(uploaded_file, folder="uploads"):
+    if uploaded_file is None:
+        return ""
+    os.makedirs(folder, exist_ok=True)
+    file_path = os.path.join(folder, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return file_path
+
+# --- App Layout ---
+st.set_page_config(page_title="Garage Record System", layout="wide")
+st.title("🚗 Garage Management System")
+
+data = load_data()
+
+# --- Vehicle Owner Info ---
+st.sidebar.header("Vehicle Owner Info")
+owner_name = st.sidebar.text_input("Owner Name")
+owner_phone = st.sidebar.text_input("Phone Number")
+
+# --- Vehicle Number Input ---
+car_number = st.text_input("Enter Vehicle Number").upper().strip()
+
+if car_number:
+    
+    # Save owner info if available
+    if owner_name or owner_phone:
+        vehicle_info = data.get(car_number, {}).get("owner_info", {})
+        vehicle_info['name'] = owner_name or vehicle_info.get('name', "")
+        vehicle_info['phone'] = owner_phone or vehicle_info.get('phone', "")
+        data.setdefault(car_number, {})["owner_info"] = vehicle_info
+        save_data(data)
+    
+    # --- Add New Service ---
+    st.subheader("➕ Add New Service")
+    with st.form("add_service_form"):
+        new_service = st.text_input("Service Name")
+        new_date = st.date_input("Date", value=datetime.today())
+        new_cost = st.text_input("Cost (optional)")
+        car_photo = st.file_uploader("Upload Car Photo", type=["png","jpg","jpeg"])
+        bill_photo = st.file_uploader("Upload Bill/Parts Photo", type=["png","jpg","jpeg"])
+        submit_new = st.form_submit_button("Add Service")
+        
+        if submit_new:
+            if not new_service:
+                st.error("Service name is required!")
+            else:
+                record = {
+                    "service": new_service,
+                    "date": str(new_date),
+                    "cost": new_cost,
+                    "car_photo": save_file(car_photo),
+                    "bill_photo": save_file(bill_photo)
+                }
+                data.setdefault(car_number, {}).setdefault("services", []).append(record)
+                save_data(data)
+                st.success(f"✅ Added new service for {car_number}!")
+
+    # --- View & Edit Past Services ---
+    services = data.get(car_number, {}).get("services", [])
+    if services:
+        st.subheader("📝 Service History")
+        for idx, record in enumerate(services):
+            st.markdown(f"### Service #{idx + 1}")
+            st.markdown(f"**Service:** {record['service']}")
+            st.markdown(f"**Date:** {record['date']}")
+            st.markdown(f"**Cost:** {record['cost']}")
+            if record.get("car_photo"):
+                st.image(record["car_photo"], caption="Car Photo", width=300)
+            if record.get("bill_photo"):
+                st.image(record["bill_photo"], caption="Bill/Parts Photo", width=300)
+            
+            # Edit Form per Service
+            with st.expander("Edit this service"):
+                with st.form(key=f"edit_service_{idx}"):
+                    edit_service = st.text_input("Service Name", value=record['service'])
+                    edit_date = st.date_input("Date", value=pd.to_datetime(record['date']))
+                    edit_cost = st.text_input("Cost", value=record['cost'])
+                    new_car_photo = st.file_uploader("Replace Car Photo", type=["png","jpg","jpeg"])
+                    new_bill_photo = st.file_uploader("Replace Bill Photo", type=["png","jpg","jpeg"])
+                    submit_edit = st.form_submit_button("Save Changes")
+                    
+                    if submit_edit:
+                        record['service'] = edit_service
+                        record['date'] = str(edit_date)
+                        record['cost'] = edit_cost
+                        if new_car_photo:
+                            record['car_photo'] = save_file(new_car_photo)
+                        if new_bill_photo:
+                            record['bill_photo'] = save_file(new_bill_photo)
+                        services[idx] = record
+                        data[car_number]["services"] = services
+                        save_data(data)
+                        st.success("✅ Service updated successfully!")
+
+        # Display Owner Info
+        st.markdown("---")
+        owner_info = data[car_number].get("owner_info", {})
+        st.subheader("👤 Vehicle Owner Info")
+        st.write(f"**Name:** {owner_info.get('name', '')}")
+        st.write(f"**Phone:** {owner_info.get('phone', '')}")
